@@ -130,6 +130,7 @@ func TestAddDelHandler(t *testing.T) {
 
 func TestSimpleDispatch(t *testing.T) {
 	r := NewRegistry()
+	r.Start()
 	out := make(chan bool)
 
 	h := NewHandler(func(ev ...interface{}) {
@@ -146,10 +147,12 @@ func TestSimpleDispatch(t *testing.T) {
 	if val := <-out; val {
 		t.Fail()
 	}
+	r.Stop()
 }
 
 func TestParallelDispatch(t *testing.T) {
 	r := NewRegistry()
+	r.Parallel()
 	// ensure we have enough of a buffer that all sends complete
 	out := make(chan time.Duration, 5)
 	// handler factory :-)

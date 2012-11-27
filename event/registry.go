@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 type HandlerID uint32
@@ -48,16 +49,26 @@ type EventRegistry interface {
 	ClearEvents(name string)
 }
 
+type Job func()
+
+type EventWorker interface {
+	Start()
+	Stop()
+}
+
 type registry struct {
 	// Event registry as a lockable map of linked-lists
 	sync.RWMutex
 	events     map[string]*list.List
 	dispatcher func(r *registry, name string, ev ...interface{})
+	job        chan Job
+	stop       chan bool
 }
 
+// modify worker dispatcher by default
 func NewRegistry() *registry {
-	r := &registry{events: make(map[string]*list.List)}
-	r.Parallel()
+	r := &registry{events: make(map[string]*list.List), job: make(chan Job, 1024), stop: make(chan bool)}
+	r.Worker()
 	return r
 }
 
@@ -135,6 +146,10 @@ func (r *registry) Serial() {
 	r.dispatcher = (*registry).serialDispatch
 }
 
+func (r *registry) Worker() {
+	r.dispatcher = (*registry).workerDispatch
+}
+
 func (r *registry) parallelDispatch(name string, ev ...interface{}) {
 	r.RLock()
 	defer r.RUnlock()
@@ -159,5 +174,37 @@ func (r *registry) serialDispatch(name string, ev ...interface{}) {
 				h.Run(ev...)
 			}
 		}()
+	}
+}
+
+func (r *registry) workerDispatch(name string, ev ...interface{}) {
+	r.RLock()
+	defer r.RUnlock()
+	if l, ok := r.events[name]; ok {
+		for e := l.Front(); e != nil; e = e.Next() {
+			h := e.Value.(Handler)
+			r.job <- func() { h.Run(ev...) }
+		}
+	}
+}
+
+func (r *registry) Start() {
+	go func() {
+		for {
+			select {
+			case j := <-r.job:
+				j()
+			case <-r.stop:
+				return
+			}
+		}
+	}()
+}
+
+func (r *registry) Stop() {
+	select {
+	case r.stop <- true:
+	case <-time.After(1 * time.Second):
+		return
 	}
 }
