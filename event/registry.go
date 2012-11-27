@@ -47,14 +47,11 @@ type EventRegistry interface {
 	DelHandler(h Handler, names ...string)
 	Dispatch(name string, ev ...interface{})
 	ClearEvents(name string)
-}
-
-type Job func()
-
-type EventWorker interface {
 	Start()
 	Stop()
 }
+
+type Job func()
 
 type registry struct {
 	// Event registry as a lockable map of linked-lists
