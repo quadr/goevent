@@ -192,7 +192,14 @@ func (r *registry) Start() {
 			case j := <-r.job:
 				j()
 			case <-r.stop:
-				return
+				for {
+					// Process for Enqueued jobs
+					if len(r.job) == 0 {
+						return
+					}
+					j := <-r.job
+					j()
+				}
 			}
 		}
 	}()
